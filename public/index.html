@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2048 Trainer</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f0efec;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --good: #0ca30c; --warn: #fab219;
+  --board: #d9d7cf; --cell: #e8e6df;
+  --accent: #2a78d6; --accent-ink: #fff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --board: #2a2a28; --cell: #353532;
+    --accent: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --board: #2a2a28; --cell: #353532;
+  --accent: #3987e5;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 20px 16px 40px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+.pill.paused i { background: var(--warn); }
+.pill.offline i { background: var(--muted); }
+.controls { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+button:hover, select:hover { background: var(--surface-2); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+button.primary:hover { filter: brightness(1.08); }
+button.danger { color: #d03b3b; }
+label.ctl { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 13px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.card h2 { font-size: 14px; margin: 0 0 2px; font-weight: 600; }
+.card .sub { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi .label { color: var(--ink-2); font-size: 12px; }
+.kpi .value { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; margin-top: 2px; }
+.kpi .note { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.main { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 16px; align-items: start; }
+.charts { display: grid; gap: 16px; min-width: 0; }
+@media (max-width: 860px) { .main { grid-template-columns: 1fr; } }
+
+/* board */
+.boardhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.score { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 13px; }
+.score b { color: var(--ink); font-size: 18px; }
+.board { position: relative; background: var(--board); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; aspect-ratio: 1; user-select: none; }
+.cell { background: var(--cell); border-radius: 6px; display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums; container-type: size; }
+.cell span { font-size: 38cqmin; }
+.cell.big span { font-size: 30cqmin; }
+.cell.huge span { font-size: 24cqmin; }
+.cell.new { animation: pop .15s ease-out; }
+.cell.merged { animation: bump .15s ease-out; }
+@keyframes pop { from { transform: scale(.4); opacity: .3; } }
+@keyframes bump { 50% { transform: scale(1.1); } }
+.overlay { position: absolute; inset: 0; border-radius: 10px; background: color-mix(in srgb, var(--surface) 82%, transparent); display: none; place-content: center; text-align: center; gap: 4px; }
+.overlay.show { display: grid; }
+.overlay b { font-size: 22px; }
+.boardctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.boardctl input[type=range] { width: 110px; }
+.hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+.qvals { margin-top: 14px; display: grid; gap: 6px; }
+.qrow { display: grid; grid-template-columns: 46px 1fr 70px; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+.qbar { height: 10px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.qbar div { height: 100%; background: var(--s1); border-radius: 999px; transition: width .12s; opacity: .45; }
+.qrow.best { color: var(--ink); font-weight: 600; }
+.qrow.best .qbar div { opacity: 1; }
+.qrow .num { text-align: right; font-variant-numeric: tabular-nums; }
+.gamelog { margin-top: 14px; font-size: 12px; color: var(--ink-2); }
+.gamelog table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.gamelog td, .gamelog th { padding: 3px 0; text-align: right; border-bottom: 1px solid var(--grid); }
+.gamelog th { color: var(--muted); font-weight: 500; }
+.gamelog td:first-child, .gamelog th:first-child { text-align: left; }
+
+/* charts */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .dlabel { fill: var(--ink-2); font-size: 11px; font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 3px; border-radius: 2px; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 4px 16px rgba(0,0,0,.12); border-radius: 8px; padding: 8px 10px; font-size: 12px; white-space: nowrap; display: none; z-index: 5; font-variant-numeric: tabular-nums; }
+.tip .t { color: var(--muted); margin-bottom: 4px; }
+.tip .r { display: flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.tip .r b { color: var(--ink); margin-left: auto; padding-left: 12px; }
+.tip .r i { width: 8px; height: 8px; border-radius: 50%; }
+.empty { color: var(--muted); font-size: 13px; padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>2048 Trainer</h1>
+    <span class="pill offline" id="status"><i></i><span>Connecting…</span></span>
+    <div class="controls">
+      <label class="ctl">Learning rate
+        <select id="alpha">
+          <option>0.1</option><option>0.05</option><option>0.025</option><option>0.01</option><option>0.005</option><option>0.0025</option>
+        </select>
+      </label>
+      <button id="pauseBtn">Pause training</button>
+      <button id="saveBtn">Save checkpoint</button>
+      <button id="resetBtn" class="danger">Reset to untrained</button>
+    </div>
+  </header>
+
+  <section class="kpis">
+    <div class="card kpi"><div class="label">Games trained</div><div class="value" id="k-games">–</div><div class="note" id="k-rate">–</div></div>
+    <div class="card kpi"><div class="label">Avg score · last 1,000</div><div class="value" id="k-avg">–</div><div class="note" id="k-best">–</div></div>
+    <div class="card kpi"><div class="label">Reaches 2048 · last 1,000</div><div class="value" id="k-2048">–</div><div class="note" id="k-4096">–</div></div>
+    <div class="card kpi"><div class="label">Best tile ever</div><div class="value" id="k-tile">–</div><div class="note" id="k-time">–</div></div>
+  </section>
+
+  <div class="main">
+    <section class="card">
+      <div class="boardhead">
+        <div><h2>Watch it play</h2><p class="sub" style="margin:0">Live, using the current weights</p></div>
+        <div class="score">Score <b id="score">0</b></div>
+      </div>
+      <div class="board" id="board">
+        <div class="overlay" id="overlay"><b id="ovTitle">Game over</b><span id="ovText"></span></div>
+      </div>
+      <div class="boardctl">
+        <button class="primary" id="playBtn">Pause</button>
+        <button id="stepBtn">Step</button>
+        <button id="newBtn">New game</button>
+        <label class="ctl">Speed <input type="range" id="speed" min="0" max="100" value="70"></label>
+      </div>
+      <div class="hint">Arrow keys or WASD: play yourself — the bars below become the agent's hints.</div>
+      <div class="qvals" id="qvals"></div>
+      <div class="gamelog" id="gamelog"></div>
+    </section>
+
+    <div class="charts">
+      <section class="card">
+        <h2>Average score</h2>
+        <p class="sub">Mean final score per block of 1,000 training games</p>
+        <div class="chart" id="c-score"></div>
+      </section>
+      <section class="card">
+        <h2>How often it reaches each tile</h2>
+        <p class="sub">% of games per 1,000-game block whose largest tile was at least this big</p>
+        <div class="legend" id="l-reach"></div>
+        <div class="chart" id="c-reach"></div>
+      </section>
+      <section class="card">
+        <h2>Largest tile · last 1,000 games</h2>
+        <p class="sub" id="distSub">Where games are ending right now</p>
+        <div class="chart" id="c-dist"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="/game.js"></script>
+<script>
+'use strict';
+const G = window.Game2048;
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Math.round(n).toLocaleString();
+const short = (n) => n >= 1e6 ? +(n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : n >= 1e3 ? +(n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'k' : String(Math.round(n));
+const dur = (s) => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h}h ${m}m` : m ? `${m}m ${Math.floor(s % 60)}s` : `${Math.floor(s)}s`; };
+const tile = (r) => r ? 2 ** r : 0;
+const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
+
+// ---------------- training stats ----------------
+let history = [], summary = null;
+const REACH = [ // tiles shown in the reach chart; index into server's reach array (512 = 0)
+  { name: '1024', i: 1, color: 'var(--s1)' },
+  { name: '2048', i: 2, color: 'var(--s2)' },
+  { name: '4096', i: 3, color: 'var(--s3)' },
+  { name: '8192', i: 4, color: 'var(--s4)' },
+];
+$('l-reach').innerHTML = REACH.map((s) => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join('');
+
+function connect() {
+  const es = new EventSource('/api/stats');
+  es.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'init') history = m.history; else history.push(...m.history);
+    summary = m.summary;
+    renderSummary();
+    if (m.type === 'init' || m.history.length) renderCharts();
+    renderDist();
+  };
+  es.onerror = () => { setStatus('offline', 'Server offline'); };
+}
+function setStatus(cls, text) { $('status').className = 'pill ' + cls; $('status').lastElementChild.textContent = text; }
+
+function renderSummary() {
+  const s = summary;
+  setStatus(s.paused ? 'paused' : '', s.paused ? 'Training paused' : `Training · ${s.workers} threads`);
+  $('pauseBtn').textContent = s.paused ? 'Resume training' : 'Pause training';
+  $('alpha').value = String(s.alpha);
+  $('k-games').textContent = fmt(s.totalGames);
+  $('k-rate').textContent = s.paused ? 'paused' : `${fmt(s.rate)} games/s`;
+  $('k-avg').textContent = s.recentN ? fmt(s.recentAvg) : '–';
+  $('k-best').textContent = `best ever ${fmt(s.bestScore)}`;
+  const reach = (r) => { let c = 0; for (let k = r; k < 16; k++) c += s.recentDist[k]; return s.recentN ? (100 * c / s.recentN).toFixed(1) + '%' : '–'; };
+  $('k-2048').textContent = reach(11);
+  $('k-4096').textContent = `4096: ${reach(12)} · 8192: ${reach(13)}`;
+  $('k-tile').textContent = s.bestRank ? fmt(tile(s.bestRank)) : '–';
+  $('k-time').textContent = `trained for ${dur(s.trainSeconds)}`;
+}
+
+function downsample(arr, max = 400) {
+  if (arr.length <= max) return arr;
+  const step = arr.length / max, out = [];
+  for (let i = 0; i < max; i++) out.push(arr[Math.floor(i * step)]);
+  out[out.length - 1] = arr[arr.length - 1];
+  return out;
+}
+
+function renderCharts() {
+  const h = downsample(history);
+  if (!h.length) {
+    for (const id of ['c-score', 'c-reach']) $(id).innerHTML = '<div class="empty">First data point after 1,000 games…</div>';
+    return;
+  }
+  const xs = h.map((p) => p.g);
+  lineChart($('c-score'), { xs, series: [{ name: 'Avg score', color: 'var(--s1)', values: h.map((p) => p.avg) }], yFmt: short, tipFmt: fmt });
+  lineChart($('c-reach'), {
+    xs, yMax: 100, yFmt: (v) => v + '%', tipFmt: (v) => v.toFixed(1) + '%', directLabels: true,
+    series: REACH.map((s) => ({ name: s.name, color: s.color, values: h.map((p) => p.reach[s.i]) })),
+  });
+}
+
+function niceTicks(max, count = 4) {
+  if (max <= 0) return [0, 1];
+  const raw = max / count, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  const ticks = []; for (let v = 0; v <= max + step * 0.001; v += step) ticks.push(+v.toFixed(6));
+  if (ticks[ticks.length - 1] < max) ticks.push(+(ticks[ticks.length - 1] + step).toFixed(6));
+  return ticks;
+}
+
+function lineChart(el, { xs, series, yMax, yFmt, tipFmt, directLabels }) {
+  const W = el.clientWidth || 600, H = 220, m = { l: 44, r: directLabels ? 42 : 12, t: 10, b: 24 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const dataMax = Math.max(1, ...series.flatMap((s) => s.values));
+  const yt = yMax ? niceTicks(Math.min(yMax, dataMax * 1.05 > 60 ? 100 : dataMax * 1.1)) : niceTicks(dataMax * 1.05);
+  const top = yt[yt.length - 1];
+  const x0 = xs[0], x1 = xs[xs.length - 1];
+  const X = (g) => m.l + (x1 === x0 ? iw / 2 : (g - x0) / (x1 - x0) * iw);
+  const Y = (v) => m.t + ih - Math.min(v, top) / top * ih;
+  const xt = x1 === x0 ? [x0] : niceTicks(x1 - x0, Math.max(2, Math.floor(iw / 110))).map((v) => v + x0).filter((v) => v <= x1);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img">`;
+  for (const v of yt) svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(${v ? '--grid' : '--axis'})" stroke-width="1"/><text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">${yFmt(v)}</text>`;
+  for (const g of xt) svg += `<text x="${X(g)}" y="${H - 6}" text-anchor="middle">${short(g)}</text>`;
+  const labels = [];
+  for (const s of series) {
+    const d = s.values.map((v, i) => `${i ? 'L' : 'M'}${X(xs[i]).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+    svg += xs.length > 1 ? `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
+                         : `<circle cx="${X(xs[0])}" cy="${Y(s.values[0])}" r="4" fill="${s.color}"/>`;
+    if (directLabels) labels.push({ y: Y(s.values[s.values.length - 1]), name: s.name });
+  }
+  // direct labels at line ends, nudged apart so they never overlap
+  labels.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < 13) labels[i].y = labels[i - 1].y + 13;
+  for (const l of labels) svg += `<text class="dlabel" x="${W - m.r + 6}" y="${l.y + 4}">${l.name}</text>`;
+  svg += `<g class="hover" style="display:none"><line y1="${m.t}" y2="${m.t + ih}" stroke="var(--axis)" stroke-width="1"/>${series.map((s) => `<circle r="4" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`).join('')}</g>`;
+  svg += `<rect x="${m.l}" y="0" width="${iw}" height="${H}" fill="transparent"/></svg><div class="tip"></div>`;
+  el.innerHTML = svg;
+  const hov = el.querySelector('.hover'), tip = el.querySelector('.tip'), rect = el.querySelector('rect:last-of-type');
+  rect.onmouseleave = () => { hov.style.display = 'none'; tip.style.display = 'none'; };
+  rect.onmousemove = (e) => {
+    const px = (e.clientX - el.getBoundingClientRect().left) * (W / el.clientWidth);
+    let i = 0, best = Infinity;
+    xs.forEach((g, k) => { const dx = Math.abs(X(g) - px); if (dx < best) { best = dx; i = k; } });
+    hov.style.display = '';
+    hov.querySelector('line').setAttribute('x1', X(xs[i])); hov.querySelector('line').setAttribute('x2', X(xs[i]));
+    hov.querySelectorAll('circle').forEach((c, k) => { c.setAttribute('cx', X(xs[i])); c.setAttribute('cy', Y(series[k].values[i])); });
+    tip.innerHTML = `<div class="t">after ${fmt(xs[i])} games</div>` + series.map((s) => `<div class="r"><i style="background:${s.color}"></i>${s.name}<b>${tipFmt(s.values[i])}</b></div>`).join('');
+    tip.style.display = 'block';
+    const sx = X(xs[i]) * el.clientWidth / W;
+    tip.style.left = Math.min(sx + 12, el.clientWidth - tip.offsetWidth) + 'px';
+    tip.style.top = '8px';
+  };
+}
+
+function renderDist() {
+  const el = $('c-dist'), s = summary;
+  if (!s.recentN) { el.innerHTML = '<div class="empty">Waiting for games…</div>'; return; }
+  let lo = 16, hi = 0;
+  s.recentDist.forEach((c, r) => { if (c) { lo = Math.min(lo, r); hi = Math.max(hi, r); } });
+  lo = Math.min(lo, 7); hi = Math.max(hi, 12);
+  const ranks = []; for (let r = lo; r <= hi; r++) ranks.push(r);
+  const W = el.clientWidth || 600, H = 180, m = { l: 8, r: 8, t: 20, b: 24 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b, bw = iw / ranks.length;
+  const max = Math.max(...ranks.map((r) => s.recentDist[r]), 1);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}"><line x1="${m.l}" x2="${W - m.r}" y1="${m.t + ih}" y2="${m.t + ih}" stroke="var(--axis)"/>`;
+  ranks.forEach((r, i) => {
+    const c = s.recentDist[r], pct = 100 * c / s.recentN, h = c / max * ih, x = m.l + i * bw + 2, w = Math.max(2, bw - 4);
+    if (h > 0) svg += `<path d="M${x},${m.t + ih}V${m.t + ih - h + 4}q0,-4 4,-4h${w - 8}q4,0 4,4V${m.t + ih}Z" fill="var(--s1)"/>`;
+    if (c) svg += `<text class="dlabel" x="${x + w / 2}" y="${m.t + ih - h - 6}" text-anchor="middle">${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%</text>`;
+    svg += `<text x="${x + w / 2}" y="${H - 6}" text-anchor="middle">${tile(r)}</text>`;
+    svg += `<rect x="${m.l + i * bw}" y="0" width="${bw}" height="${H}" fill="transparent" data-r="${r}"/>`;
+  });
+  el.innerHTML = svg + '</svg><div class="tip"></div>';
+  const tip = el.querySelector('.tip');
+  el.querySelectorAll('rect[data-r]').forEach((rc) => {
+    rc.onmousemove = () => {
+      const r = +rc.dataset.r, c = s.recentDist[r];
+      tip.innerHTML = `<div class="t">largest tile ${fmt(tile(r))}</div><div class="r">games<b>${fmt(c)} (${(100 * c / s.recentN).toFixed(1)}%)</b></div>`;
+      tip.style.display = 'block';
+      const sx = (+rc.getAttribute('x') + bw / 2) * el.clientWidth / W;
+      tip.style.left = Math.max(0, Math.min(sx - tip.offsetWidth / 2, el.clientWidth - tip.offsetWidth)) + 'px';
+      tip.style.top = '0px';
+    };
+    rc.onmouseleave = () => { tip.style.display = 'none'; };
+  });
+}
+
+// ---------------- training controls ----------------
+$('pauseBtn').onclick = () => post('/api/control', { action: summary && summary.paused ? 'resume' : 'pause' }).then((s) => { summary = { ...summary, ...s }; renderSummary(); });
+$('alpha').onchange = (e) => post('/api/control', { action: 'alpha', value: +e.target.value });
+$('saveBtn').onclick = async () => { const b = $('saveBtn'); b.disabled = true; b.textContent = 'Saving…'; await post('/api/control', { action: 'save' }); b.textContent = 'Saved'; setTimeout(() => { b.disabled = false; b.textContent = 'Save checkpoint'; }, 1500); };
+$('resetBtn').onclick = () => { if (confirm('Erase everything the agent has learned and start training from zero?')) post('/api/control', { action: 'reset' }); };
+
+// ---------------- live game ----------------
+// Tile colors: cool-to-warm ramp, ink flips to white once the fill gets dark enough.
+const TILE = ['', '#e4ecf7', '#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95', '#6250d6', '#9b46c4', '#d55181', '#eb6834', '#e34948', '#c98500', '#008300', '#0b0b0b'];
+const DIRN = ['Up', 'Right', 'Down', 'Left'];
+const ARROW = ['↑', '→', '↓', '←'];
+const cells = [];
+for (let i = 0; i < 16; i++) { const c = document.createElement('div'); c.className = 'cell'; c.appendChild(document.createElement('span')); $('board').insertBefore(c, $('overlay')); cells.push(c); }
+
+let board, score, moves, running = true, busy = false, timer = null, over = false, lastValues = null;
+const log = [];
+function newGame() { board = G.newBoard(); score = 0; moves = 0; over = false; $('overlay').classList.remove('show'); draw(new Set(board.reduce((a, v, i) => (v && a.push(i), a), [])), new Set()); refreshHint(); }
+function draw(fresh = new Set(), merged = new Set()) {
+  board.forEach((r, i) => {
+    const c = cells[i];
+    c.className = 'cell' + (r >= 10 ? (r >= 14 ? ' huge' : ' big') : '') + (fresh.has(i) && delay() > 120 ? ' new' : '') + (merged.has(i) && delay() > 120 ? ' merged' : '');
+    c.style.background = r ? TILE[r] : '';
+    c.style.color = r >= 5 ? '#fff' : '#0b0b0b';
+    c.firstChild.textContent = r ? tile(r) : '';
+  });
+  $('score').textContent = fmt(score);
+}
+function showValues(values, chosen) {
+  lastValues = values;
+  const valid = values.filter((v) => v !== null);
+  const lo = Math.min(...valid), hi = Math.max(...valid);
+  $('qvals').innerHTML = values.map((v, d) => {
+    const w = v === null ? 0 : hi === lo ? 100 : 15 + 85 * (v - lo) / (hi - lo);
+    return `<div class="qrow${d === chosen ? ' best' : ''}"><span>${ARROW[d]} ${DIRN[d]}</span><div class="qbar"><div style="width:${w}%"></div></div><span class="num">${v === null ? 'illegal' : fmt(v)}</span></div>`;
+  }).join('');
+}
+async function refreshHint() {
+  const { dir, values } = await post('/api/policy', { board: Array.from(board) });
+  showValues(values, dir);
+  return dir;
+}
+function apply(dir) {
+  const before = board.slice();
+  const r = G.move(board, dir);
+  if (r < 0) return false;
+  score += r; moves++;
+  const merged = new Set(); board.forEach((v, i) => { if (v > before[i] && before[i]) merged.add(i); });
+  const spawn = G.addRandomTile(board);
+  draw(new Set([spawn]), merged);
+  if ([0, 1, 2, 3].every((d) => G.move(board.slice(), d) < 0)) endGame();
+  return true;
+}
+function endGame() {
+  over = true;
+  const mx = tile(G.maxRank(board));
+  $('ovTitle').textContent = `Game over · ${fmt(mx)}`;
+  $('ovText').textContent = `${fmt(score)} points in ${fmt(moves)} moves`;
+  $('overlay').classList.add('show');
+  log.unshift({ tile: mx, score, moves, at: summary ? summary.totalGames : 0 });
+  log.length = Math.min(log.length, 6);
+  $('gamelog').innerHTML = `<table><tr><th>Watched game</th><th>Largest tile</th><th>Score</th><th>Moves</th></tr>${log.map((g) => `<tr><td>at ${short(g.at)} trained</td><td>${fmt(g.tile)}</td><td>${fmt(g.score)}</td><td>${fmt(g.moves)}</td></tr>`).join('')}</table>`;
+}
+const delay = () => { const v = +$('speed').value; return Math.round(600 * (1 - v / 100) ** 2); };
+async function step() {
+  if (busy) return; busy = true;
+  try {
+    if (over) { newGame(); return; }
+    const dir = await refreshHint();
+    if (dir >= 0) apply(dir); else endGame();
+  } finally { busy = false; }
+}
+function schedule() {
+  clearTimeout(timer);
+  if (!running) return;
+  timer = setTimeout(async () => { await step().catch(() => {}); if (over && running) { timer = setTimeout(() => { newGame(); schedule(); }, 1800); } else schedule(); }, delay());
+}
+function setRunning(v) { running = v; $('playBtn').textContent = v ? 'Pause' : 'Autoplay'; schedule(); }
+$('playBtn').onclick = () => setRunning(!running);
+$('stepBtn').onclick = () => { setRunning(false); step(); };
+$('newBtn').onclick = () => { newGame(); schedule(); };
+document.addEventListener('keydown', (e) => {
+  const map = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3, w: 0, d: 1, s: 2, a: 3 };
+  const d = map[e.key]; if (d === undefined || e.target.tagName === 'SELECT') return;
+  e.preventDefault();
+  if (running) setRunning(false);
+  if (over) return;
+  if (apply(d) && !over) refreshHint();
+});
+
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { renderCharts(); if (summary) renderDist(); }, 150); });
+newGame(); connect(); schedule();
+</script>
+</body>
+</html>

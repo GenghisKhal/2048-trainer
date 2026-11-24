@@ -1,0 +1,8 @@
+{
+  "name": "2048-trainer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trains an n-tuple TD-learning agent to play 2048, with a live dashboard",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
